@@ -1,2 +1,3 @@
-requirement.txt
 .vscode/
+*.log
+*.db
