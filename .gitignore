@@ -1,3 +1,7 @@
-.vscode/
-*.log
+__pycache__/
+venv/
 *.db
+backend/volunteer.db
+.vscode/
+.DS_Store
+Thumbs.db
