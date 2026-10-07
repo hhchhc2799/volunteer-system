@@ -119,6 +119,32 @@ def delt(tid: int):
     c.close()
     return res()
 
+@app.get("/api/v1/members/{uid}/hours")
+def getuhour(uid: int):
+    c = get_db()
+    cur = c.cursor()
+    cur.execute("""
+        SELECT a.hour as allocatedHours, t.title as taskTitle, t.tdate as tdate
+        FROM allocs a JOIN tasks t ON a.tid = t.id WHERE a.uid = ?
+    """, (uid,))
+    history = [dict(r) for r in cur.fetchall()]
+    cur.execute("SELECT SUM(hour) as tot FROM allocs WHERE uid = ?", (uid,))
+    tot = cur.fetchone()["tot"] or 0.0
+    c.close()
+    return res({"tothour": tot, "history": {"items": history}})
+
+@app.get("/api/v1/hours/leaderboard")
+def getalltime():
+    c = get_db()
+    cur = c.cursor()
+    cur.execute("""
+        SELECT u.id as memberId, u.name, u.stuid as stuid, COALESCE(SUM(a.hour), 0) as tothour
+        FROM users u LEFT JOIN allocs a ON u.id = a.uid GROUP BY u.id ORDER BY tothour DESC
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    c.close()
+    return res({"items": rows})
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
