@@ -109,6 +109,16 @@ def modifyt(tid: int, t: Addt):
     c.close()
     return res({"taskId": tid})
 
+@app.delete("/api/v1/tasks/{tid}")
+def delt(tid: int):
+    c = get_db()
+    cur = c.cursor()
+    cur.execute("DELETE FROM tasks WHERE id=?", (tid,))
+    cur.execute("DELETE FROM allocs WHERE tid=?", (tid,))
+    c.commit()
+    c.close()
+    return res()
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
