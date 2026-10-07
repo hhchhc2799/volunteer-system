@@ -84,6 +84,31 @@ def addt(t: Addt):
     c.close()
     return res({"taskId": tid})
 
+@app.get("/api/v1/tasks")
+def queryt():
+    c = get_db()
+    cur = c.cursor()
+    cur.execute("SELECT id, title, tdate as tdate, tothour as tothour FROM tasks")
+    rows = [dict(r) for r in cur.fetchall()]
+    c.close()
+    return res({"items": rows})
+
+@app.put("/api/v1/tasks/{tid}")
+def modifyt(tid: int, t: Addt):
+    c = get_db()
+    cur = c.cursor()
+    cur.execute("UPDATE tasks SET title=?, tdate=?, tothour=? WHERE id=?", (t.title, t.tdate.isoformat(), t.tothour, tid))
+    cur.execute("DELETE FROM allocs WHERE tid=?", (tid,))
+    if t.totstu:
+        n = len(t.totstu)
+        avg = round(t.tothour / n, 2)
+        rem = round(t.tothour - avg * n, 2)
+        for i, uid in enumerate(t.totstu):
+            cur.execute("INSERT INTO allocs (tid, uid, hour) VALUES (?, ?, ?)", (tid, uid, round(avg + (rem if i == 0 else 0), 2)))
+    c.commit()
+    c.close()
+    return res({"taskId": tid})
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
