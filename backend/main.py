@@ -1,53 +1,91 @@
+import os
 import sqlite3
-from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import datetime, date
+from contextlib import contextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "data.db")
+if not os.path.exists(DB_PATH) and os.path.exists(os.path.join(os.path.dirname(BASE_DIR), "data.db")):
+    DB_PATH = os.path.join(os.path.dirname(BASE_DIR), "data.db")
+
+@contextmanager
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 def init_db():
-    with sqlite3.connect("data.db") as c:
-        cur = c.cursor()
-        cur.execute('''
+    with get_db() as c:
+        c.executescript('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 stuid TEXT UNIQUE NOT NULL
-            )
-        ''')
-        cur.execute('''
+            );
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
                 tdate DATE NOT NULL,
                 tothour REAL NOT NULL
-            )
-        ''')
-        cur.execute('''
+            );
             CREATE TABLE IF NOT EXISTS allocs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tid INTEGER NOT NULL,
                 uid INTEGER NOT NULL,
                 hour REAL NOT NULL
-            )
+            );
         ''')
-        c.commit()
 
 init_db()
 
-def get_db():
-    c = sqlite3.connect("data.db")
-    c.row_factory = sqlite3.Row
-    return c
-
-
 def res(dat=None, msg="success", code=200):
-    return {"code": code, "message": msg, "data": dat, "timestamp": int(datetime.now().timestamp() * 1000)}
+    return JSONResponse(
+        status_code=code,
+        content={
+            "code": code,
+            "message": msg,
+            "data": dat,
+            "timestamp": int(datetime.now().timestamp() * 1000)
+        }
+    )
+
+def save_allocs(conn, tid: Optional[int], totstu: List[int], tothour: float):
+    if not tid or not totstu:
+        return
+    n = len(totstu)
+    avg = round(tothour / n, 2)
+    rem = round(tothour - avg * n, 2)
+    for i, uid in enumerate(totstu):
+        conn.execute(
+            "INSERT INTO allocs (tid, uid, hour) VALUES (?, ?, ?)",
+            (tid, uid, round(avg + (rem if i == 0 else 0), 2))
+        )
 
 class Addu(BaseModel):
     name: str
-    stuid: str
+    stuid: Optional[str] = None
 
 class Addt(BaseModel):
     title: str
@@ -57,93 +95,70 @@ class Addt(BaseModel):
 
 @app.post("/api/v1/members")
 def addu(u: Addu):
-    c = get_db()
-    cur = c.cursor()
+    stuid = u.stuid.strip() if (u.stuid and u.stuid.strip()) else f"STU{int(datetime.now().timestamp() * 1000)}"
     try:
-        cur.execute("INSERT INTO users (name, stuid) VALUES (?, ?)", (u.name, u.stuid))
-        c.commit(); 
-        return res({"id": cur.lastrowid})
+        with get_db() as c:
+            cur = c.execute("INSERT INTO users (name, stuid) VALUES (?, ?)", (u.name.strip(), stuid))
+            return res({"id": cur.lastrowid})
     except sqlite3.IntegrityError:
         return res(None, "stuid exists", 409)
-    finally:
-        c.close()
 
 @app.post("/api/v1/tasks")
 def addt(t: Addt):
-    c = get_db() 
-    cur = c.cursor()
-    cur.execute("INSERT INTO tasks (title, tdate, tothour) VALUES (?, ?, ?)", (t.title, t.tdate.isoformat(), t.tothour))
-    tid = cur.lastrowid
-    if t.totstu:
-        n = len(t.totstu)
-        avg = round(t.tothour / n, 2)
-        rem = round(t.tothour - avg * n, 2)
-        for i, uid in enumerate(t.totstu):
-            cur.execute("INSERT INTO allocs (tid, uid, hour) VALUES (?, ?, ?)", (tid, uid, round(avg + (rem if i == 0 else 0), 2)))
-    c.commit()
-    c.close()
-    return res({"taskId": tid})
+    with get_db() as c:
+        cur = c.execute("INSERT INTO tasks (title, tdate, tothour) VALUES (?, ?, ?)", 
+                        (t.title, t.tdate.isoformat(), t.tothour))
+        tid = cur.lastrowid
+        save_allocs(c, tid, t.totstu, t.tothour)
+        return res({"taskId": tid})
 
 @app.get("/api/v1/tasks")
 def queryt():
-    c = get_db()
-    cur = c.cursor()
-    cur.execute("SELECT id, title, tdate as tdate, tothour as tothour FROM tasks")
-    rows = [dict(r) for r in cur.fetchall()]
-    c.close()
-    return res({"items": rows})
+    with get_db() as c:
+        rows = [dict(r) for r in c.execute("SELECT id, title, tdate, tothour FROM tasks ORDER BY id DESC").fetchall()]
+        return res({"items": rows})
 
 @app.put("/api/v1/tasks/{tid}")
 def modifyt(tid: int, t: Addt):
-    c = get_db()
-    cur = c.cursor()
-    cur.execute("UPDATE tasks SET title=?, tdate=?, tothour=? WHERE id=?", (t.title, t.tdate.isoformat(), t.tothour, tid))
-    cur.execute("DELETE FROM allocs WHERE tid=?", (tid,))
-    if t.totstu:
-        n = len(t.totstu)
-        avg = round(t.tothour / n, 2)
-        rem = round(t.tothour - avg * n, 2)
-        for i, uid in enumerate(t.totstu):
-            cur.execute("INSERT INTO allocs (tid, uid, hour) VALUES (?, ?, ?)", (tid, uid, round(avg + (rem if i == 0 else 0), 2)))
-    c.commit()
-    c.close()
-    return res({"taskId": tid})
+    with get_db() as c:
+        c.execute("UPDATE tasks SET title=?, tdate=?, tothour=? WHERE id=?", 
+                  (t.title, t.tdate.isoformat(), t.tothour, tid))
+        c.execute("DELETE FROM allocs WHERE tid=?", (tid,))
+        save_allocs(c, tid, t.totstu, t.tothour)
+        return res({"taskId": tid})
 
 @app.delete("/api/v1/tasks/{tid}")
 def delt(tid: int):
-    c = get_db()
-    cur = c.cursor()
-    cur.execute("DELETE FROM tasks WHERE id=?", (tid,))
-    cur.execute("DELETE FROM allocs WHERE tid=?", (tid,))
-    c.commit()
-    c.close()
-    return res()
+    with get_db() as c:
+        c.execute("DELETE FROM tasks WHERE id=?", (tid,))
+        c.execute("DELETE FROM allocs WHERE tid=?", (tid,))
+        return res(None)
 
 @app.get("/api/v1/members/{uid}/hours")
 def getuhour(uid: int):
-    c = get_db()
-    cur = c.cursor()
-    cur.execute("""
-        SELECT a.hour as allocatedHours, t.title as taskTitle, t.tdate as tdate
-        FROM allocs a JOIN tasks t ON a.tid = t.id WHERE a.uid = ?
-    """, (uid,))
-    history = [dict(r) for r in cur.fetchall()]
-    cur.execute("SELECT SUM(hour) as tot FROM allocs WHERE uid = ?", (uid,))
-    tot = cur.fetchone()["tot"] or 0.0
-    c.close()
-    return res({"tothour": tot, "history": {"items": history}})
+    with get_db() as c:
+        history = [dict(r) for r in c.execute("""
+            SELECT a.tid as taskId, a.hour as allocatedHours, t.title as taskTitle, t.tdate as tdate, t.tdate as taskDate
+            FROM allocs a
+            JOIN tasks t ON a.tid = t.id
+            WHERE a.uid = ?
+            ORDER BY t.tdate DESC
+        """, (uid,)).fetchall()]
+        tot_row = c.execute("SELECT SUM(hour) FROM allocs WHERE uid = ?", (uid,)).fetchone()
+        tot = round(tot_row[0], 2) if tot_row and tot_row[0] else 0.0
+        return res({"tothour": tot, "history": {"items": history}})
 
 @app.get("/api/v1/hours/leaderboard")
 def getalltime():
-    c = get_db()
-    cur = c.cursor()
-    cur.execute("""
-        SELECT u.id as memberId, u.name, u.stuid as stuid, COALESCE(SUM(a.hour), 0) as tothour
-        FROM users u LEFT JOIN allocs a ON u.id = a.uid GROUP BY u.id ORDER BY tothour DESC
-    """)
-    rows = [dict(r) for r in cur.fetchall()]
-    c.close()
-    return res({"items": rows})
+    with get_db() as c:
+        rows = [dict(r) for r in c.execute("""
+            SELECT u.id as memberId, u.name, u.stuid, ROUND(COALESCE(SUM(a.hour), 0.0), 2) as tothour
+            FROM users u
+            LEFT JOIN allocs a ON u.id = a.uid
+            GROUP BY u.id
+            ORDER BY tothour DESC
+        """).fetchall()]
+        return res({"items": rows})
 
 if __name__ == "__main__":
     import uvicorn
