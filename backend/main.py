@@ -81,13 +81,10 @@ def res(dat=None, msg="success", code=200):
 def save_allocs(conn, tid: Optional[int], totstu: List[int], tothour: float):
     if not tid or not totstu:
         return
-    n = len(totstu)
-    avg = round(tothour / n, 1)
-    rem = round(tothour - avg * n, 1)
-    for i, uid in enumerate(totstu):
+    for uid in totstu:
         conn.execute(
             "INSERT INTO allocs (tid, uid, hour) VALUES (?, ?, ?)",
-            (tid, uid, round(avg + (rem if i == 0 else 0), 1))
+            (tid, uid, round(tothour, 1))
         )
 
 class Addu(BaseModel):
