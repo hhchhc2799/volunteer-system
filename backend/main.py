@@ -5,10 +5,17 @@ from datetime import datetime, date
 from contextlib import contextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 
 app = FastAPI()
+
+@app.get("/")
+def index():
+    html_file = os.path.join(os.path.dirname(BASE_DIR), "frontend", "index.html")
+    if os.path.exists(html_file):
+        return FileResponse(html_file)
+    return res({"msg": "volunteer-system backend running"})
 
 app.add_middleware(
     CORSMiddleware,
@@ -74,13 +81,10 @@ def res(dat=None, msg="success", code=200):
 def save_allocs(conn, tid: Optional[int], totstu: List[int], tothour: float):
     if not tid or not totstu:
         return
-    n = len(totstu)
-    avg = round(tothour / n, 2)
-    rem = round(tothour - avg * n, 2)
-    for i, uid in enumerate(totstu):
+    for uid in totstu:
         conn.execute(
             "INSERT INTO allocs (tid, uid, hour) VALUES (?, ?, ?)",
-            (tid, uid, round(avg + (rem if i == 0 else 0), 2))
+            (tid, uid, round(tothour, 1))
         )
 
 class Addu(BaseModel):
@@ -106,25 +110,38 @@ def addu(u: Addu):
 @app.post("/api/v1/tasks")
 def addt(t: Addt):
     with get_db() as c:
+        tothour = round(t.tothour, 1)
         cur = c.execute("INSERT INTO tasks (title, tdate, tothour) VALUES (?, ?, ?)", 
-                        (t.title, t.tdate.isoformat(), t.tothour))
+                        (t.title, t.tdate.isoformat(), tothour))
         tid = cur.lastrowid
-        save_allocs(c, tid, t.totstu, t.tothour)
+        save_allocs(c, tid, t.totstu, tothour)
         return res({"taskId": tid})
 
 @app.get("/api/v1/tasks")
 def queryt():
     with get_db() as c:
-        rows = [dict(r) for r in c.execute("SELECT id, title, tdate, tothour FROM tasks ORDER BY id DESC").fetchall()]
-        return res({"items": rows})
+        tasks = []
+        for r in c.execute("SELECT id, title, tdate, tothour FROM tasks ORDER BY id DESC").fetchall():
+            item = dict(r)
+            item["tothour"] = round(item["tothour"], 1)
+            participants = [dict(u) for u in c.execute("""
+                SELECT u.id, u.name, ROUND(a.hour, 1) as hour
+                FROM allocs a
+                JOIN users u ON a.uid = u.id
+                WHERE a.tid = ?
+            """, (item["id"],)).fetchall()]
+            item["participants"] = participants
+            tasks.append(item)
+        return res({"items": tasks})
 
 @app.put("/api/v1/tasks/{tid}")
 def modifyt(tid: int, t: Addt):
     with get_db() as c:
+        tothour = round(t.tothour, 1)
         c.execute("UPDATE tasks SET title=?, tdate=?, tothour=? WHERE id=?", 
-                  (t.title, t.tdate.isoformat(), t.tothour, tid))
+                  (t.title, t.tdate.isoformat(), tothour, tid))
         c.execute("DELETE FROM allocs WHERE tid=?", (tid,))
-        save_allocs(c, tid, t.totstu, t.tothour)
+        save_allocs(c, tid, t.totstu, tothour)
         return res({"taskId": tid})
 
 @app.delete("/api/v1/tasks/{tid}")
@@ -132,6 +149,13 @@ def delt(tid: int):
     with get_db() as c:
         c.execute("DELETE FROM tasks WHERE id=?", (tid,))
         c.execute("DELETE FROM allocs WHERE tid=?", (tid,))
+        return res(None)
+
+@app.delete("/api/v1/members/{uid}")
+def delu(uid: int):
+    with get_db() as c:
+        c.execute("DELETE FROM users WHERE id=?", (uid,))
+        c.execute("DELETE FROM allocs WHERE uid=?", (uid,))
         return res(None)
 
 @app.get("/api/v1/members/{uid}/hours")
@@ -145,14 +169,14 @@ def getuhour(uid: int):
             ORDER BY t.tdate DESC
         """, (uid,)).fetchall()]
         tot_row = c.execute("SELECT SUM(hour) FROM allocs WHERE uid = ?", (uid,)).fetchone()
-        tot = round(tot_row[0], 2) if tot_row and tot_row[0] else 0.0
+        tot = round(tot_row[0], 1) if tot_row and tot_row[0] else 0.0
         return res({"tothour": tot, "history": {"items": history}})
 
 @app.get("/api/v1/hours/leaderboard")
 def getalltime():
     with get_db() as c:
         rows = [dict(r) for r in c.execute("""
-            SELECT u.id as memberId, u.name, u.stuid, ROUND(COALESCE(SUM(a.hour), 0.0), 2) as tothour
+            SELECT u.id as memberId, u.name, u.stuid, ROUND(COALESCE(SUM(a.hour), 0.0), 1) as tothour
             FROM users u
             LEFT JOIN allocs a ON u.id = a.uid
             GROUP BY u.id
