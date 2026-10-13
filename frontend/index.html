@@ -1,12 +1,25 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title> 我的网页 </title>
+    <meta charset="UTF-8">
+    <title>开发组任务登记及志愿时长分配系统</title>
     <style>
     .LRcontainer /* 左右布局 */
     {
         display: flex;
         gap: 150px;
+    }
+    table, th, td {
+        border: 1px solid #ccc;
+        border-collapse: collapse;
+        padding: 6px 12px;
+        text-align: left;
+    }
+    th {
+        background-color: #f2f2f2;
+    }
+    button {
+        cursor: pointer;
     }
     </style>
 </head>
@@ -26,7 +39,7 @@
                 <div> <!-- 添加组员 -->
                     <h3> 添加组员 </h3>
                     <input id = "addpersonname" type = "text" placeholder="组员姓名">
-                    <br>
+                    <br><br>
                     <button id = "addpersonbutton"> 创建组员 </button>
                 </div>
 
@@ -48,10 +61,10 @@
         <h2> 创建一个任务 </h2>
 
             <input id = "taskcontent" type = "text" placeholder="任务内容">
-            <br>
+            <br><br>
 
-            <input id = "time" type = "text" placeholder="任务时间">
-            <br>
+            <input id = "time" type = "date" placeholder="任务时间">
+            <br><br>
 
             <h3> 选择人员 </h3>
 
@@ -60,8 +73,8 @@
 
             <br>
 
-            <input id = "volunteertime" type = "text" placeholder="志愿时长">
-            <br>
+            <input id = "volunteertime" type = "number" step = "0.1" min = "0.1" placeholder="志愿时长">
+            <br><br>
 
             <button id = "taskbutton"> 创建任务 </button>
 
@@ -89,171 +102,243 @@
 
     </div>
 
+    <script>
+    let apiurl = "http://127.0.0.1:8000/api/v1";
+
+    let addpersonbutton = document.getElementById("addpersonbutton");
+    let addpersonname = document.getElementById("addpersonname");
+    let personlist = document.getElementById("personlist");
+    let choosepersonlist = document.getElementById("choosepersonlist");
+
+    let taskcontent = document.getElementById("taskcontent");
+    let time = document.getElementById("time");
+    let volunteertime = document.getElementById("volunteertime");
+    let taskbutton = document.getElementById("taskbutton");
+
+    let table = document.getElementById("table");
+
+    // 默认日期为当天
+    time.value = new Date().toISOString().split("T")[0];
+
+    // 获取数据
+    async function getdata(url)
+    {
+        try {
+            let res = await fetch(apiurl + url);
+            let data = await res.json();
+            return data.data;
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
+    }
+
+    // 发送数据
+    async function senddata(url, method, data)
+    {
+        let opt = {
+            method: method,
+            headers: {
+                "Content-Type": "application/json"
+            }
+        };
+        if (data !== undefined) {
+            opt.body = JSON.stringify(data);
+        }
+        let res = await fetch(apiurl + url, opt);
+        if (!res.ok) {
+            let err = await res.json().catch(() => ({}));
+            alert(err.message || "请求失败");
+        }
+    }
+
+    // 清空表格
+    function clearlist(list)
+    {
+        while(list.rows.length > 1)
+        {
+            list.deleteRow(1);
+        }
+    }
+
+    // 显示人员
+    function showpersons(persons)
+    {
+        clearlist(personlist);
+        choosepersonlist.innerHTML = "";
+        for(let i = 0; i < persons.length; i++)
+        {
+            let person = persons[i];
+            let tr = document.createElement("tr");
+            let td1 = document.createElement("td");
+            let td2 = document.createElement("td");
+            let td3 = document.createElement("td");
+
+            td1.textContent = person.name;
+            td2.textContent = Number(person.tothour).toFixed(1);
+
+            let delBtn = document.createElement("button");
+            delBtn.textContent = "删除";
+            delBtn.onclick = async function() {
+                if(confirm("确定删除组员 " + person.name + " 吗？")) {
+                    await senddata("/members/" + person.memberId, "DELETE");
+                    loadlists();
+                }
+            };
+            td3.appendChild(delBtn);
+
+            tr.appendChild(td1);
+            tr.appendChild(td2);
+            tr.appendChild(td3);
+            personlist.appendChild(tr);
+
+            let div = document.createElement("div");
+            let checkbox = document.createElement("input");
+            let label = document.createElement("label");
+
+            checkbox.type = "checkbox";
+            checkbox.value = person.memberId;
+            label.textContent = " " + person.name;
+
+            div.appendChild(checkbox);
+            div.appendChild(label);
+            choosepersonlist.appendChild(div);
+        }
+    }
+
+    // 显示任务
+    function showtasks(tasks)
+    {
+        clearlist(table);
+        for(let i = 0; i < tasks.length; i++)
+        {
+            let task = tasks[i];
+            let tr = document.createElement("tr");
+            let td1 = document.createElement("td");
+            let td2 = document.createElement("td");
+            let td3 = document.createElement("td");
+            let td4 = document.createElement("td");
+            let td5 = document.createElement("td");
+            let td6 = document.createElement("td");
+
+            td1.textContent = task.id;
+            td2.textContent = task.title;
+            td3.textContent = task.tdate;
+
+            let names = "";
+            for(let j = 0; j < task.participants.length; j++)
+            {
+                if(names != "")
+                {
+                    names += "、";
+                }
+                names += task.participants[j].name;
+            }
+            td4.textContent = names || "-";
+            td5.textContent = Number(task.tothour).toFixed(1);
+
+            let delBtn = document.createElement("button");
+            delBtn.textContent = "删除";
+            delBtn.onclick = async function() {
+                if(confirm("确定删除任务 #" + task.id + " 吗？")) {
+                    await senddata("/tasks/" + task.id, "DELETE");
+                    loadlists();
+                }
+            };
+            td6.appendChild(delBtn);
+
+            tr.appendChild(td1);
+            tr.appendChild(td2);
+            tr.appendChild(td3);
+            tr.appendChild(td4);
+            tr.appendChild(td5);
+            tr.appendChild(td6);
+            table.appendChild(tr);
+        }
+    }
+
+    // 加载数据
+    async function loadlists()
+    {
+        let persons = await getdata("/hours/leaderboard");
+        let tasks = await getdata("/tasks");
+        if(persons && persons.items) showpersons(persons.items);
+        if(tasks && tasks.items) showtasks(tasks.items);
+    }
+
+    // 添加人员
+    addpersonbutton.onclick = async function()
+    {
+        let name = addpersonname.value.trim();
+        if(!name) {
+            alert("请输入组员姓名");
+            return;
+        }
+        await senddata(
+            "/members",
+            "POST",
+            {
+                name: name
+            }
+        );
+        addpersonname.value = "";
+        loadlists();
+    };
+
+    // 实时拦截：禁止输入超过一位小数
+    volunteertime.oninput = function() {
+        if (this.value.includes(".")) {
+            let parts = this.value.split(".");
+            if (parts[1].length > 1) {
+                this.value = parts[0] + "." + parts[1].slice(0, 1);
+            }
+        }
+    };
+
+    // 添加任务
+    taskbutton.onclick = async function()
+    {
+        let title = taskcontent.value.trim();
+        let tdate = time.value;
+        let rawHours = volunteertime.value.trim();
+
+        if(!title) return alert("请输入任务内容");
+        if(!tdate) return alert("请选择任务时间");
+        if(!rawHours || isNaN(Number(rawHours))) return alert("请输入有效的志愿时长");
+        if(!/^\d+(\.\d)?$/.test(rawHours)) return alert("志愿时长仅支持一位小数（如 0.1、1.5）");
+        
+        let hours = Number(rawHours);
+        if(hours < 0.1) return alert("志愿时长最小为 0.1 小时");
+
+        let ids = [];
+        let boxes = choosepersonlist.querySelectorAll(
+            "input[type='checkbox']"
+        );
+        for(let i = 0; i < boxes.length; i++)
+        {
+            if(boxes[i].checked)
+            {
+                ids.push(Number(boxes[i].value));
+            }
+        }
+        if(ids.length === 0) return alert("请至少选择一名参与人员");
+
+        await senddata(
+            "/tasks",
+            "POST",
+            {
+                title: title,
+                tdate: tdate,
+                tothour: Math.round(hours * 10) / 10,
+                totstu: ids
+            }
+        );
+        taskcontent.value = "";
+        volunteertime.value = "";
+        loadlists();
+    };
+
+    loadlists();
+    </script>
 </body>
 </html>
-    
-    <script>
-
-let apiurl = "http://127.0.0.1:8000/api/v1";
-
-let addpersonbutton = document.getElementById("addpersonbutton");
-let addpersonname = document.getElementById("addpersonname");
-let personlist = document.getElementById("personlist");
-let choosepersonlist = document.getElementById("choosepersonlist");
-
-let taskcontent = document.getElementById("taskcontent");
-let time = document.getElementById("time");
-let volunteertime = document.getElementById("volunteertime");
-let taskbutton = document.getElementById("taskbutton");
-
-let table = document.getElementById("table");
-// 获取数据
-async function getdata(url)
-{
-    let res = await fetch(apiurl + url);
-    let data = await res.json();
-    return data.data;
-}
-
-// 发送数据
-async function senddata(url, method, data)
-{
-    await fetch(apiurl + url,
-    {
-        method: method,
-        headers:
-        {
-            "Content-Type":"application/json"
-        },
-        body: JSON.stringify(data)
-    });
-}
-
-// 清空表格
-function clearlist(list)
-{
-    while(list.rows.length > 1)
-    {
-        list.deleteRow(1);
-    }
-}
-
-// 显示人员
-function showpersons(persons)
-{
-    clearlist(personlist);
-    choosepersonlist.innerHTML = "";
-    for(let i = 0;i < persons.length;i++)
-    {
-        let person = persons[i];
-        let tr = document.createElement("tr");
-        let td1 = document.createElement("td");
-        let td2 = document.createElement("td");
-
-        td1.textContent = person.name;
-        td2.textContent = person.tothour;
-        tr.appendChild(td1);
-        tr.appendChild(td2);
-        personlist.appendChild(tr);
-
-        let div = document.createElement("div");
-        let checkbox = document.createElement("input");
-        let label = document.createElement("label");
-
-        checkbox.type = "checkbox";
-        checkbox.personid = person.memberId;
-        label.textContent = person.name;
-
-        div.appendChild(checkbox);
-        div.appendChild(label);
-        choosepersonlist.appendChild(div);
-    }
-}
-
-// 显示任务
-function showtasks(tasks)
-{
-    clearlist(table);
-    for(let i = 0;i < tasks.length;i++)
-    {
-        let task = tasks[i];
-        let tr = document.createElement("tr");
-        let td1 = document.createElement("td");
-        let td2 = document.createElement("td");
-        let td3 = document.createElement("td");
-        let td4 = document.createElement("td");
-        let td5 = document.createElement("td");
-
-        td1.textContent = task.id;
-        td2.textContent = task.title;
-        td3.textContent = task.tdate;
-        let names = "";
-        for(let j = 0;j < task.participants.length;j++)
-        {
-            if(names != "")
-            {
-                names += "、";
-            }
-            names += task.participants[j].name;
-        }
-        td4.textContent = names;
-        td5.textContent = task.tothour;
-        tr.appendChild(td1);
-        tr.appendChild(td2);
-        tr.appendChild(td3);
-        tr.appendChild(td4);
-        tr.appendChild(td5);
-        table.appendChild(tr);
-    }
-}
-// 加载数据
-async function loadlists()
-{
-    let persons = await getdata("/hours/leaderboard");
-    let tasks = await getdata("/tasks");
-    showpersons(persons.items);
-    showtasks(tasks.items);
-}
-// 添加人员
-addpersonbutton.onclick = async function()
-{
-    await senddata(
-        "/members",
-        "POST",
-        {
-            name:addpersonname.value
-        }
-    );
-    loadlists();
-};
-// 添加任务
-taskbutton.onclick = async function()
-{
-    let ids = [];
-    let boxes = choosepersonlist.querySelectorAll(
-        "input[type='checkbox']"
-    );
-    for(let i = 0;i < boxes.length;i++)
-    {
-        if(boxes[i].checked)
-        {
-            ids.push(boxes[i].personid);
-        }
-    }
-    await senddata(
-        "/tasks",
-        "POST",
-        {
-            title:taskcontent.value,
-            tdate:time.value,
-            tothour:Number(volunteertime.value),
-            totstu:ids
-        }
-    );
-    loadlists();
-};
-loadlists();
-</script>
-
-</body> <!-- 主体结束 -->
-</html> <!-- 网页结束 -->
