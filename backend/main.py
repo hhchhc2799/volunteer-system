@@ -8,6 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "data.db")
+if not os.path.exists(DB_PATH) and os.path.exists(os.path.join(os.path.dirname(BASE_DIR), "data.db")):
+    DB_PATH = os.path.join(os.path.dirname(BASE_DIR), "data.db")
+
 app = FastAPI()
 
 @app.get("/")
@@ -25,14 +30,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "data.db")
-if not os.path.exists(DB_PATH) and os.path.exists(os.path.join(os.path.dirname(BASE_DIR), "data.db")):
-    DB_PATH = os.path.join(os.path.dirname(BASE_DIR), "data.db")
-
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
@@ -90,16 +90,21 @@ def save_allocs(conn, tid: Optional[int], totstu: List[int], tothour: float):
 class Addu(BaseModel):
     name: str
     stuid: Optional[str] = None
+    studentNumber: Optional[str] = None
 
 class Addt(BaseModel):
     title: str
-    tdate: date
-    tothour: float
-    totstu: List[int]
+    tdate: Optional[date] = None
+    taskDate: Optional[date] = None
+    tothour: Optional[float] = None
+    totalHours: Optional[float] = None
+    totstu: Optional[List[int]] = None
+    participantIds: Optional[List[int]] = None
 
 @app.post("/api/v1/members")
 def addu(u: Addu):
-    stuid = u.stuid.strip() if (u.stuid and u.stuid.strip()) else f"STU{int(datetime.now().timestamp() * 1000)}"
+    raw_id = (u.studentNumber or u.stuid or "").strip()
+    stuid = raw_id if raw_id else f"STU{int(datetime.now().timestamp() * 1000)}"
     try:
         with get_db() as c:
             cur = c.execute("INSERT INTO users (name, stuid) VALUES (?, ?)", (u.name.strip(), stuid))
@@ -109,12 +114,19 @@ def addu(u: Addu):
 
 @app.post("/api/v1/tasks")
 def addt(t: Addt):
+    task_date = t.taskDate or t.tdate
+    if not task_date:
+        return res(None, "date required", 400)
+    task_hours = t.totalHours if t.totalHours is not None else t.tothour
+    if task_hours is None:
+        return res(None, "hours required", 400)
+    uids = t.participantIds if t.participantIds is not None else (t.totstu or [])
+    tothour = round(task_hours, 1)
     with get_db() as c:
-        tothour = round(t.tothour, 1)
         cur = c.execute("INSERT INTO tasks (title, tdate, tothour) VALUES (?, ?, ?)", 
-                        (t.title, t.tdate.isoformat(), tothour))
+                        (t.title, task_date.isoformat(), tothour))
         tid = cur.lastrowid
-        save_allocs(c, tid, t.totstu, tothour)
+        save_allocs(c, tid, uids, tothour)
         return res({"taskId": tid})
 
 @app.get("/api/v1/tasks")
@@ -124,24 +136,37 @@ def queryt():
         for r in c.execute("SELECT id, title, tdate, tothour FROM tasks ORDER BY id DESC").fetchall():
             item = dict(r)
             item["tothour"] = round(item["tothour"], 1)
+            item["totalHours"] = item["tothour"]
+            item["taskDate"] = item["tdate"]
             participants = [dict(u) for u in c.execute("""
-                SELECT u.id, u.name, ROUND(a.hour, 1) as hour
+                SELECT u.id, u.name, ROUND(a.hour, 1) as hour, ROUND(a.hour, 1) as allocatedHours
                 FROM allocs a
                 JOIN users u ON a.uid = u.id
                 WHERE a.tid = ?
             """, (item["id"],)).fetchall()]
             item["participants"] = participants
+            item["participantIds"] = [p["id"] for p in participants]
             tasks.append(item)
         return res({"items": tasks})
 
 @app.put("/api/v1/tasks/{tid}")
 def modifyt(tid: int, t: Addt):
+    task_date = t.taskDate or t.tdate
+    if not task_date:
+        return res(None, "date required", 400)
+    task_hours = t.totalHours if t.totalHours is not None else t.tothour
+    if task_hours is None:
+        return res(None, "hours required", 400)
+    uids = t.participantIds if t.participantIds is not None else (t.totstu or [])
+    tothour = round(task_hours, 1)
     with get_db() as c:
-        tothour = round(t.tothour, 1)
+        exist = c.execute("SELECT id FROM tasks WHERE id = ?", (tid,)).fetchone()
+        if not exist:
+            return res(None, "task not found", 404)
         c.execute("UPDATE tasks SET title=?, tdate=?, tothour=? WHERE id=?", 
-                  (t.title, t.tdate.isoformat(), tothour, tid))
+                  (t.title, task_date.isoformat(), tothour, tid))
         c.execute("DELETE FROM allocs WHERE tid=?", (tid,))
-        save_allocs(c, tid, t.totstu, tothour)
+        save_allocs(c, tid, uids, tothour)
         return res({"taskId": tid})
 
 @app.delete("/api/v1/tasks/{tid}")
@@ -162,7 +187,7 @@ def delu(uid: int):
 def getuhour(uid: int):
     with get_db() as c:
         history = [dict(r) for r in c.execute("""
-            SELECT a.tid as taskId, a.hour as allocatedHours, t.title as taskTitle, t.tdate as tdate, t.tdate as taskDate
+            SELECT a.tid as taskId, ROUND(a.hour, 1) as allocatedHours, t.title as taskTitle, t.tdate as tdate, t.tdate as taskDate
             FROM allocs a
             JOIN tasks t ON a.tid = t.id
             WHERE a.uid = ?
@@ -170,13 +195,13 @@ def getuhour(uid: int):
         """, (uid,)).fetchall()]
         tot_row = c.execute("SELECT SUM(hour) FROM allocs WHERE uid = ?", (uid,)).fetchone()
         tot = round(tot_row[0], 1) if tot_row and tot_row[0] else 0.0
-        return res({"tothour": tot, "history": {"items": history}})
+        return res({"tothour": tot, "totalHours": tot, "history": {"items": history}})
 
 @app.get("/api/v1/hours/leaderboard")
 def getalltime():
     with get_db() as c:
         rows = [dict(r) for r in c.execute("""
-            SELECT u.id as memberId, u.name, u.stuid, ROUND(COALESCE(SUM(a.hour), 0.0), 1) as tothour
+            SELECT u.id as memberId, u.name, u.stuid, u.stuid as studentNumber, ROUND(COALESCE(SUM(a.hour), 0.0), 1) as tothour, ROUND(COALESCE(SUM(a.hour), 0.0), 1) as totalHours
             FROM users u
             LEFT JOIN allocs a ON u.id = a.uid
             GROUP BY u.id
