@@ -118,8 +118,8 @@ def addt(t: Addt):
     if not task_date:
         return res(None, "date required", 400)
     task_hours = t.totalHours if t.totalHours is not None else t.tothour
-    if task_hours is None:
-        return res(None, "hours required", 400)
+    if task_hours is None or task_hours < 0.1 or task_hours > 100.0:
+        return res(None, "hours must be between 0.1 and 100", 400)
     uids = t.participantIds if t.participantIds is not None else (t.totstu or [])
     tothour = round(task_hours, 1)
     with get_db() as c:
@@ -155,8 +155,8 @@ def modifyt(tid: int, t: Addt):
     if not task_date:
         return res(None, "date required", 400)
     task_hours = t.totalHours if t.totalHours is not None else t.tothour
-    if task_hours is None:
-        return res(None, "hours required", 400)
+    if task_hours is None or task_hours < 0.1 or task_hours > 100.0:
+        return res(None, "hours must be between 0.1 and 100", 400)
     uids = t.participantIds if t.participantIds is not None else (t.totstu or [])
     tothour = round(task_hours, 1)
     with get_db() as c:
