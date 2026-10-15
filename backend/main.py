@@ -86,9 +86,10 @@ def res(dat=None, msg="success", code=200):
 def save_allocs(conn, tid: Optional[int], totstu: List[int], tothour: float):
     if not tid or not totstu:
         return
-    placeholders = ",".join("?" for _ in totstu)
-    valid_ids = {r[0] for r in conn.execute(f"SELECT id FROM users WHERE id IN ({placeholders})", totstu).fetchall()}
-    for uid in totstu:
+    unique_uids = list(dict.fromkeys(totstu))
+    placeholders = ",".join("?" for _ in unique_uids)
+    valid_ids = {r[0] for r in conn.execute(f"SELECT id FROM users WHERE id IN ({placeholders})", unique_uids).fetchall()}
+    for uid in unique_uids:
         if uid in valid_ids:
             conn.execute(
                 "INSERT INTO allocs (tid, uid, hour) VALUES (?, ?, ?)",
@@ -146,18 +147,39 @@ def addt(t: Addt):
         return res({"taskId": tid})
 
 @app.get("/api/v1/tasks")
-def queryt():
+def queryt(page: int = 1, pageSize: int = 10, all: bool = False):
     with get_db() as c:
-        task_rows = c.execute("SELECT id, title, tdate, tothour FROM tasks ORDER BY id DESC").fetchall()
+        total = c.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        if all:
+            task_rows = c.execute("SELECT id, title, tdate, tothour FROM tasks ORDER BY id DESC").fetchall()
+            ps = total if total > 0 else 1
+            p = 1
+            total_pages = 1 if total > 0 else 0
+        else:
+            p = max(1, page)
+            ps = max(1, min(100, pageSize))
+            offset = (p - 1) * ps
+            total_pages = (total + ps - 1) // ps if total > 0 else 0
+            task_rows = c.execute(
+                "SELECT id, title, tdate, tothour FROM tasks ORDER BY id DESC LIMIT ? OFFSET ?",
+                (ps, offset)
+            ).fetchall()
         if not task_rows:
-            return res({"items": []})
-        
-        alloc_rows = c.execute("""
+            return res({
+                "items": [],
+                "total": total,
+                "page": p,
+                "pageSize": ps,
+                "totalPages": total_pages
+            })
+        task_ids = [r["id"] for r in task_rows]
+        placeholders = ",".join("?" for _ in task_ids)
+        alloc_rows = c.execute(f"""
             SELECT a.tid, u.id, u.name, ROUND(a.hour, 1) as hour
             FROM allocs a
             JOIN users u ON a.uid = u.id
-        """).fetchall()
-        
+            WHERE a.tid IN ({placeholders})
+        """, task_ids).fetchall()
         task_allocs = {}
         for ar in alloc_rows:
             tid = ar["tid"]
@@ -169,7 +191,6 @@ def queryt():
                 "hour": ar["hour"],
                 "allocatedHours": ar["hour"]
             })
-            
         tasks = []
         for r in task_rows:
             item = dict(r)
@@ -180,7 +201,13 @@ def queryt():
             item["participants"] = parts
             item["participantIds"] = [p["id"] for p in parts]
             tasks.append(item)
-        return res({"items": tasks})
+        return res({
+            "items": tasks,
+            "total": total,
+            "page": p,
+            "pageSize": ps,
+            "totalPages": total_pages
+        })
 
 @app.put("/api/v1/tasks/{tid}")
 def modifyt(tid: int, t: Addt):
@@ -220,30 +247,92 @@ def delu(uid: int):
         return res(None)
 
 @app.get("/api/v1/members/{uid}/hours")
-def getuhour(uid: int):
+def getuhour(uid: int, page: int = 1, pageSize: int = 5, all: bool = False):
     with get_db() as c:
+        total = c.execute("SELECT COUNT(*) FROM allocs WHERE uid = ?", (uid,)).fetchone()[0]
+        tot_row = c.execute("SELECT SUM(hour) FROM allocs WHERE uid = ?", (uid,)).fetchone()
+        tot = round(tot_row[0], 1) if tot_row and tot_row[0] else 0.0
+        if all:
+            history = [dict(r) for r in c.execute("""
+                SELECT a.tid as taskId, ROUND(a.hour, 1) as allocatedHours, t.title as taskTitle, t.tdate as tdate, t.tdate as taskDate
+                FROM allocs a
+                JOIN tasks t ON a.tid = t.id
+                WHERE a.uid = ?
+                ORDER BY t.tdate DESC, t.id DESC
+            """, (uid,)).fetchall()]
+            return res({
+                "tothour": tot,
+                "totalHours": tot,
+                "history": {
+                    "items": history,
+                    "total": total,
+                    "page": 1,
+                    "pageSize": total if total > 0 else 1,
+                    "totalPages": 1 if total > 0 else 0
+                }
+            })
+        p = max(1, page)
+        ps = max(1, min(100, pageSize))
+        offset = (p - 1) * ps
+        total_pages = (total + ps - 1) // ps if total > 0 else 0
         history = [dict(r) for r in c.execute("""
             SELECT a.tid as taskId, ROUND(a.hour, 1) as allocatedHours, t.title as taskTitle, t.tdate as tdate, t.tdate as taskDate
             FROM allocs a
             JOIN tasks t ON a.tid = t.id
             WHERE a.uid = ?
-            ORDER BY t.tdate DESC
-        """, (uid,)).fetchall()]
-        tot_row = c.execute("SELECT SUM(hour) FROM allocs WHERE uid = ?", (uid,)).fetchone()
-        tot = round(tot_row[0], 1) if tot_row and tot_row[0] else 0.0
-        return res({"tothour": tot, "totalHours": tot, "history": {"items": history}})
+            ORDER BY t.tdate DESC, t.id DESC
+            LIMIT ? OFFSET ?
+        """, (uid, ps, offset)).fetchall()]
+        return res({
+            "tothour": tot,
+            "totalHours": tot,
+            "history": {
+                "items": history,
+                "total": total,
+                "page": p,
+                "pageSize": ps,
+                "totalPages": total_pages
+            }
+        })
 
 @app.get("/api/v1/hours/leaderboard")
-def getalltime():
+def getalltime(page: int = 1, pageSize: int = 10, all: bool = False):
     with get_db() as c:
+        total = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if all:
+            rows = [dict(r) for r in c.execute("""
+                SELECT u.id as memberId, u.name, u.stuid, u.stuid as studentNumber, ROUND(COALESCE(SUM(a.hour), 0.0), 1) as tothour, ROUND(COALESCE(SUM(a.hour), 0.0), 1) as totalHours
+                FROM users u
+                LEFT JOIN allocs a ON u.id = a.uid
+                GROUP BY u.id
+                ORDER BY tothour DESC, u.id ASC
+            """).fetchall()]
+            return res({
+                "items": rows,
+                "total": total,
+                "page": 1,
+                "pageSize": total if total > 0 else 1,
+                "totalPages": 1 if total > 0 else 0
+            })
+        p = max(1, page)
+        ps = max(1, min(100, pageSize))
+        offset = (p - 1) * ps
+        total_pages = (total + ps - 1) // ps if total > 0 else 0
         rows = [dict(r) for r in c.execute("""
             SELECT u.id as memberId, u.name, u.stuid, u.stuid as studentNumber, ROUND(COALESCE(SUM(a.hour), 0.0), 1) as tothour, ROUND(COALESCE(SUM(a.hour), 0.0), 1) as totalHours
             FROM users u
             LEFT JOIN allocs a ON u.id = a.uid
             GROUP BY u.id
-            ORDER BY tothour DESC
-        """).fetchall()]
-        return res({"items": rows})
+            ORDER BY tothour DESC, u.id ASC
+            LIMIT ? OFFSET ?
+        """, (ps, offset)).fetchall()]
+        return res({
+            "items": rows,
+            "total": total,
+            "page": p,
+            "pageSize": ps,
+            "totalPages": total_pages
+        })
 
 if __name__ == "__main__":
     import uvicorn
