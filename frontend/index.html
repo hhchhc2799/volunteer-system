@@ -10,13 +10,14 @@
         background: #f5f6f8;
         margin: 24px;
     }
-    main{ 
+    main { 
         display: flex;
         gap: 30px; 
         align-items: flex-start;
     }
     .Lcontainer { 
-        width: 350px; padding: 20px; 
+        width: 350px; 
+        padding: 20px; 
         background: #f9f9f9; 
         border-radius: 8px; 
         border: 1px solid #eee; 
@@ -36,6 +37,7 @@
     }
     table {
         width: 100%;
+        margin-bottom: 20px;
     }
     th {
         background-color: #f2f2f2;
@@ -51,22 +53,38 @@
     button:hover {
         background: #dfe5eb;
     }
+    button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .pagination {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+        margin-bottom: 20px;
+    }
     input {
         padding: 6px 10px;
         border: 1px solid #ccc;
         border-radius: 4px;
+        width: calc(100% - 24px);
+        max-width: 300px;
+    }
+    input[type="checkbox"] {
+        width: auto;
+        margin-right: 6px;
     }
     dialog {
         border: 1px solid #ccc;
         border-radius: 8px;
         padding: 20px;
+        min-width: 320px;
         max-width: 85%;
     }
-    h1
-    {
+    h1 {
         text-align: center;
     }
-    
     </style>
 </head>
 
@@ -76,81 +94,114 @@
         <h1>开发组任务登记及志愿时长分配系统</h1>
     </header>
 
-    <main> <!-- 页面左右布局 -->
-        <div class = "Lcontainer"> <!-- 左侧：人员管理、创建任务 -->
-
-            <h2> 人员管理 </h2>
-
-            <div> <!-- 添加组员 -->
-                <h3> 添加组员 </h3>
-                <input id = "addpersonname" type = "text" placeholder="组员姓名">
+    <main>
+        <div class="Lcontainer">
+            <h2>人员管理</h2>
+            <div>
+                <h3>添加组员</h3>
+                <input id="addpersonname" type="text" placeholder="组员姓名" maxlength="50">
                 <br><br>
-                <button id = "addpersonbutton"> 创建组员 </button>
+                <input id="addpersonstuid" type="text" placeholder="学号（选填）" maxlength="50">
+                <br><br>
+                <button id="addpersonbutton">创建组员</button>
             </div>
             
-            <div> <!-- 创建任务 -->
-                <h2> 创建一个任务 </h2>
-                <input id = "taskcontent" type = "text" placeholder="任务内容">
+            <div>
+                <h2>创建一个任务</h2>
+                <input id="taskcontent" type="text" placeholder="任务内容" maxlength="100">
                 <br><br>
-                <input id = "time" type = "date" placeholder="任务时间">
+                <input id="time" type="date">
                 <br><br>
-                <h3> 选择人员 </h3>
-                <div id = "choosepersonlist">
-                </div>
+                <h3>选择人员</h3>
+                <div id="choosepersonlist"></div>
                 <br>
-                <input id = "volunteertime" type = "number" step = "0.1" min = "0.1" placeholder="志愿时长">
+                <input id="volunteertime" type="number" step="0.1" min="0.1" max="100" placeholder="志愿时长（0.1~100）">
                 <br><br>
-                <button id = "taskbutton"> 创建任务 </button>
+                <button id="taskbutton">创建任务</button>
             </div>
         </div>
-        <div class = "Rcontainer"> 
-            <div><!-- 任务列表 -->
-                <h2> 任务列表 </h2>
-                <table id = "table">
+
+        <div class="Rcontainer">
+            <div>
+                <h2>任务列表</h2>
+                <table id="table">
                     <tr>
-                        <th> 编号 </th>
-                        <th> 任务内容 </th>
-                        <th> 时间 </th>
-                        <th> 人员 </th>
-                        <th> 志愿时长 </th>
-                        <th> 操作 </th>
+                        <th>编号</th>
+                        <th>任务内容</th>
+                        <th>时间</th>
+                        <th>人员</th>
+                        <th>志愿时长</th>
+                        <th>操作</th>
                     </tr>
                 </table>
+                <div class="pagination">
+                    <button id="taskprevbtn">上一页</button>
+                    <span id="taskpageinfo">第 1 / 1 页 (共 0 条)</span>
+                    <button id="tasknextbtn">下一页</button>
+                </div>
             </div>
-            <div> <!-- 人员列表 -->
-                <h3> 人员列表 </h3>
-                <table id = "personlist">
+            <div>
+                <h3>人员列表</h3>
+                <table id="personlist">
                     <tr>
-                        <th> 人员 </th>
-                        <th> 志愿时长 </th>
-                        <th> 操作 </th>
+                        <th>人员</th>
+                        <th>学号</th>
+                        <th>志愿时长</th>
+                        <th>操作</th>
                     </tr>
                 </table>
+                <div class="pagination">
+                    <button id="personprevbtn">上一页</button>
+                    <span id="personpageinfo">第 1 / 1 页 (共 0 条)</span>
+                    <button id="personnextbtn">下一页</button>
+                </div>
             </div>
         </div>
- 
     </main>
 
-    <!-- 任务明细弹窗 -->
-    <dialog id = "historydialog">
-        <h3 id = "historytitle"> 任务明细 </h3>
-        <table id = "historytable">
+    <dialog id="historydialog">
+        <h3 id="historytitle">任务明细</h3>
+        <table id="historytable">
             <tr>
-                <th> 任务编号 </th>
-                <th> 任务内容 </th>
-                <th> 时间 </th>
-                <th> 获得时长（小时） </th>
+                <th>任务编号</th>
+                <th>任务内容</th>
+                <th>时间</th>
+                <th>获得时长（小时）</th>
             </tr>
         </table>
-        <p id = "historymessage"></p>
-        <button id = "closehistorybutton"> 关闭 </button>
+        <div id="historypagination" class="pagination">
+            <button id="historyprevbtn">上一页</button>
+            <span id="historypageinfo">第 1 / 1 页 (共 0 条)</span>
+            <button id="historynextbtn">下一页</button>
+        </div>
+        <p id="historymessage"></p>
+        <button id="closehistorybutton">关闭</button>
+    </dialog>
+
+    <dialog id="editdialog">
+        <h3>修改任务</h3>
+        <input id="editid" type="hidden">
+        <input id="edittaskcontent" type="text" placeholder="任务内容" maxlength="100">
+        <br><br>
+        <input id="edittime" type="date">
+        <br><br>
+        <h4>选择人员</h4>
+        <div id="editchoosepersonlist"></div>
+        <br>
+        <input id="editvolunteertime" type="number" step="0.1" min="0.1" max="100" placeholder="志愿时长（0.1~100）">
+        <br><br>
+        <button id="saveeditbutton">保存修改</button>
+        <button id="closeeditbutton">取消</button>
     </dialog>
 
     <script>
-    let apiurl = "http://127.0.0.1:8000/api/v1";
+    // 设置后端接口地址
+    let apiurl = window.location.protocol.startsWith("http") ? "/api/v1" : "http://127.0.0.1:32004/api/v1";
 
+    // 获取页面元素
     let addpersonbutton = document.getElementById("addpersonbutton");
     let addpersonname = document.getElementById("addpersonname");
+    let addpersonstuid = document.getElementById("addpersonstuid");
     let personlist = document.getElementById("personlist");
     let choosepersonlist = document.getElementById("choosepersonlist");
 
@@ -161,18 +212,48 @@
 
     let table = document.getElementById("table");
 
+    let taskprevbtn = document.getElementById("taskprevbtn");
+    let taskpageinfo = document.getElementById("taskpageinfo");
+    let tasknextbtn = document.getElementById("tasknextbtn");
+
+    let personprevbtn = document.getElementById("personprevbtn");
+    let personpageinfo = document.getElementById("personpageinfo");
+    let personnextbtn = document.getElementById("personnextbtn");
+
     let historydialog = document.getElementById("historydialog");
     let historytitle = document.getElementById("historytitle");
     let historytable = document.getElementById("historytable");
     let historymessage = document.getElementById("historymessage");
     let closehistorybutton = document.getElementById("closehistorybutton");
+    let historyprevbtn = document.getElementById("historyprevbtn");
+    let historypageinfo = document.getElementById("historypageinfo");
+    let historynextbtn = document.getElementById("historynextbtn");
+    let historypagination = document.getElementById("historypagination");
 
-    // 默认日期为当天
+    let editdialog = document.getElementById("editdialog");
+    let editid = document.getElementById("editid");
+    let edittaskcontent = document.getElementById("edittaskcontent");
+    let edittime = document.getElementById("edittime");
+    let editchoosepersonlist = document.getElementById("editchoosepersonlist");
+    let editvolunteertime = document.getElementById("editvolunteertime");
+    let saveeditbutton = document.getElementById("saveeditbutton");
+    let closeeditbutton = document.getElementById("closeeditbutton");
+
+    // 保存人员缓存、分页状态和每页条数
+    let cachedPersons = [];
+    let currentTaskPage = 1;
+    let currentPersonPage = 1;
+    let currentHistoryPage = 1;
+    let currentHistoryPerson = null;
+    let taskPageSize = 10;
+    let personPageSize = 10;
+    let historyPageSize = 5;
+
+    // 设置默认任务日期
     time.value = new Date().toISOString().split("T")[0];
 
-    // 获取数据
-    async function getdata(url)
-    {
+    // 获取后端数据
+    async function getdata(url) {
         try {
             let res = await fetch(apiurl + url);
             let data = await res.json();
@@ -183,9 +264,8 @@
         }
     }
 
-    // 发送数据
-    async function senddata(url, method, data)
-    {
+    // 发送新增、修改和删除请求
+    async function senddata(url, method, data) {
         let opt = {
             method: method,
             headers: {
@@ -199,58 +279,22 @@
         if (!res.ok) {
             let err = await res.json().catch(() => ({}));
             alert(err.message || "请求失败");
+            throw new Error(err.message || "请求失败");
         }
     }
 
-    // 清空表格
-    function clearlist(list)
-    {
-        while(list.rows.length > 1)
-        {
+    // 清空表格数据
+    function clearlist(list) {
+        while (list.rows.length > 1) {
             list.deleteRow(1);
         }
     }
 
-    // 显示人员
-    function showpersons(persons)
-    {
-        clearlist(personlist);
+    // 生成人员选择列表
+    function renderChoosePersonList() {
         choosepersonlist.innerHTML = "";
-        for(let i = 0; i < persons.length; i++)
-        {
-            let person = persons[i];
-            let tr = document.createElement("tr");
-            let td1 = document.createElement("td");
-            let td2 = document.createElement("td");
-            let td3 = document.createElement("td");
-
-            td1.textContent = person.name;
-            td2.textContent = Number(person.tothour).toFixed(1);
-
-            let delBtn = document.createElement("button");
-            delBtn.textContent = "删除";
-            delBtn.onclick = async function() {
-                if(confirm("确定删除组员 " + person.name + " 吗？")) {
-                    await senddata("/members/" + person.memberId, "DELETE");
-                    loadlists();
-                }
-            };
-            td3.appendChild(delBtn);
-
-            // 查看明细按钮
-            let historyBtn = document.createElement("button");
-            historyBtn.textContent = "查看明细";
-            historyBtn.onclick = function()
-            {
-                showhistory(person);
-            };
-            td3.appendChild(historyBtn);
-
-            tr.appendChild(td1);
-            tr.appendChild(td2);
-            tr.appendChild(td3);
-            personlist.appendChild(tr);
-
+        for (let i = 0; i < cachedPersons.length; i++) {
+            let person = cachedPersons[i];
             let div = document.createElement("div");
             let checkbox = document.createElement("input");
             let label = document.createElement("label");
@@ -265,58 +309,274 @@
         }
     }
 
-    // 当前人员的任务明细
-    async function showhistory(person)
-    {
-        let data = await getdata("/members/" + person.memberId + "/hours");
-        if(!data) return;
-
-        historytitle.textContent = person.name + "的任务明细";
-        clearlist(historytable);
-        historymessage.textContent = "";
-
-        let tasks = data.history.items;
-        if(tasks.length === 0)
-        {
-            historymessage.textContent = "没有记录";
+    // 获取全部人员用于任务选择
+    async function loadAllPersonsForSelect() {
+        let data = await getdata("/hours/leaderboard?all=true");
+        if (data && data.items) {
+            cachedPersons = data.items;
+            renderChoosePersonList();
         }
+    }
 
-        // 新增：每条参与记录生成一行，显示个人获得的时长
-        for(let i = 0; i < tasks.length; i++)
-        {
-            let task = tasks[i];
+    // 显示人员列表及分页信息
+    function showpersons(data) {
+        clearlist(personlist);
+        let persons = data.items || [];
+        for (let i = 0; i < persons.length; i++) {
+            let person = persons[i];
             let tr = document.createElement("tr");
             let td1 = document.createElement("td");
             let td2 = document.createElement("td");
             let td3 = document.createElement("td");
             let td4 = document.createElement("td");
 
-            td1.textContent = task.taskId;
-            td2.textContent = task.taskTitle;
-            td3.textContent = task.taskDate;
-            td4.textContent = Number(task.allocatedHours).toFixed(1);
+            td1.textContent = person.name;
+            td2.textContent = person.studentNumber || person.stuid || "-";
+            td3.textContent = Number(person.totalHours ?? person.tothour).toFixed(1);
+
+            let delBtn = document.createElement("button");
+            delBtn.textContent = "删除";
+            delBtn.onclick = async function() {
+                if (confirm("确定删除组员 " + person.name + " 吗？")) {
+                    delBtn.disabled = true;
+                    try {
+                        await senddata("/members/" + person.memberId, "DELETE");
+                        await loadAllPersonsForSelect();
+                        await loadPersonPage(currentPersonPage);
+                        await loadTaskPage(currentTaskPage);
+                    } catch (e) {
+                        delBtn.disabled = false;
+                    }
+                }
+            };
+            td4.appendChild(delBtn);
+
+            let historyBtn = document.createElement("button");
+            historyBtn.textContent = "查看明细";
+            historyBtn.onclick = async function() {
+                historyBtn.disabled = true;
+                try {
+                    await showhistory(person);
+                } finally {
+                    historyBtn.disabled = false;
+                }
+            };
+            td4.appendChild(historyBtn);
 
             tr.appendChild(td1);
             tr.appendChild(td2);
             tr.appendChild(td3);
             tr.appendChild(td4);
-            historytable.appendChild(tr);
+            personlist.appendChild(tr);
         }
 
-        historydialog.showModal();
+        currentPersonPage = data.page || 1;
+        let totalPages = data.totalPages || (data.total > 0 ? 1 : 0);
+        let total = data.total || 0;
+        personpageinfo.textContent = "第 " + currentPersonPage + " / " + Math.max(1, totalPages) + " 页 (共 " + total + " 条)";
+        personprevbtn.disabled = currentPersonPage <= 1;
+        personnextbtn.disabled = currentPersonPage >= totalPages || totalPages === 0;
     }
-    
-    closehistorybutton.onclick = function()
-    {
+
+    // 加载指定页的人员列表
+    async function loadPersonPage(page) {
+        let data = await getdata("/hours/leaderboard?page=" + page + "&pageSize=" + personPageSize);
+        if (data) {
+            if (page > 1 && (!data.items || data.items.length === 0) && data.total > 0) {
+                return loadPersonPage(page - 1);
+            }
+            showpersons(data);
+        }
+    }
+
+    // 打开个人任务明细弹窗
+    async function showhistory(person) {
+        currentHistoryPerson = person;
+        historytitle.textContent = person.name + "的任务明细";
+        await loadHistoryPage(person, 1);
+        if (!historydialog.open) {
+            historydialog.showModal();
+        }
+    }
+
+    // 加载指定页的个人任务明细
+    async function loadHistoryPage(person, page) {
+        currentHistoryPerson = person;
+        currentHistoryPage = page;
+        let data = await getdata("/members/" + person.memberId + "/hours?page=" + page + "&pageSize=" + historyPageSize);
+        if (!data || !data.history) return;
+
+        let history = data.history;
+        if (page > 1 && (!history.items || history.items.length === 0) && history.total > 0) {
+            return loadHistoryPage(person, page - 1);
+        }
+
+        clearlist(historytable);
+        let tasks = history.items || [];
+        if (tasks.length === 0) {
+            historytable.style.display = "none";
+            historypagination.style.display = "none";
+            historymessage.textContent = "没有记录";
+        } else {
+            historytable.style.display = "table";
+            historypagination.style.display = "flex";
+            historymessage.textContent = "";
+            for (let i = 0; i < tasks.length; i++) {
+                let task = tasks[i];
+                let tr = document.createElement("tr");
+                let td1 = document.createElement("td");
+                let td2 = document.createElement("td");
+                let td3 = document.createElement("td");
+                let td4 = document.createElement("td");
+
+                td1.textContent = task.taskId;
+                td2.textContent = task.taskTitle;
+                td3.textContent = task.taskDate || task.tdate;
+                td4.textContent = Number(task.allocatedHours).toFixed(1);
+
+                tr.appendChild(td1);
+                tr.appendChild(td2);
+                tr.appendChild(td3);
+                tr.appendChild(td4);
+                historytable.appendChild(tr);
+            }
+        }
+
+        currentHistoryPage = history.page || 1;
+        let totalPages = history.totalPages || (history.total > 0 ? 1 : 0);
+        let total = history.total || 0;
+        historypageinfo.textContent = "第 " + currentHistoryPage + " / " + Math.max(1, totalPages) + " 页 (共 " + total + " 条)";
+        historyprevbtn.disabled = currentHistoryPage <= 1;
+        historynextbtn.disabled = currentHistoryPage >= totalPages || totalPages === 0;
+    }
+
+    // 关闭个人明细弹窗
+    closehistorybutton.onclick = function() {
         historydialog.close();
     };
 
-    // 显示任务
-    function showtasks(tasks)
-    {
+    // 处理任务列表翻页
+    taskprevbtn.onclick = function() {
+        if (currentTaskPage > 1) {
+            loadTaskPage(currentTaskPage - 1);
+        }
+    };
+    tasknextbtn.onclick = function() {
+        loadTaskPage(currentTaskPage + 1);
+    };
+
+    // 处理人员列表翻页
+    personprevbtn.onclick = function() {
+        if (currentPersonPage > 1) {
+            loadPersonPage(currentPersonPage - 1);
+        }
+    };
+    personnextbtn.onclick = function() {
+        loadPersonPage(currentPersonPage + 1);
+    };
+
+    // 处理个人明细翻页
+    historyprevbtn.onclick = function() {
+        if (currentHistoryPerson && currentHistoryPage > 1) {
+            loadHistoryPage(currentHistoryPerson, currentHistoryPage - 1);
+        }
+    };
+    historynextbtn.onclick = function() {
+        if (currentHistoryPerson) {
+            loadHistoryPage(currentHistoryPerson, currentHistoryPage + 1);
+        }
+    };
+
+    // 填入原任务信息并打开修改弹窗
+    async function openedit(task) {
+        if (cachedPersons.length === 0) {
+            await loadAllPersonsForSelect();
+        }
+        editid.value = task.id;
+        edittaskcontent.value = task.title;
+        edittime.value = task.taskDate || task.tdate;
+        editvolunteertime.value = Number(task.totalHours ?? task.tothour).toFixed(1);
+
+        editchoosepersonlist.innerHTML = "";
+        let currentUids = (task.participants || []).map(p => p.id);
+
+        for (let i = 0; i < cachedPersons.length; i++) {
+            let p = cachedPersons[i];
+            let div = document.createElement("div");
+            let cb = document.createElement("input");
+            let lbl = document.createElement("label");
+
+            cb.type = "checkbox";
+            cb.value = p.memberId;
+            if (currentUids.includes(p.memberId)) {
+                cb.checked = true;
+            }
+            lbl.textContent = " " + p.name;
+
+            div.appendChild(cb);
+            div.appendChild(lbl);
+            editchoosepersonlist.appendChild(div);
+        }
+
+        if (!editdialog.open) {
+            editdialog.showModal();
+        }
+    }
+
+    // 取消修改并关闭弹窗
+    closeeditbutton.onclick = function() {
+        editdialog.close();
+    };
+
+    // 校验并保存任务修改
+    saveeditbutton.onclick = async function() {
+        let title = edittaskcontent.value.trim();
+        let tdate = edittime.value;
+        let rawHours = editvolunteertime.value.trim();
+
+        if (!title) return alert("请输入任务内容");
+        if (!tdate) return alert("请选择任务时间");
+        if (!rawHours || isNaN(Number(rawHours))) return alert("请输入有效的志愿时长");
+        if (!/^\d+(\.\d)?$/.test(rawHours)) return alert("志愿时长仅支持一位小数（如 0.1、1.5）");
+
+        let hours = Number(rawHours);
+        if (hours < 0.1 || hours > 100.0) return alert("志愿时长须在 0.1 到 100 小时之间");
+
+        let ids = [];
+        let boxes = editchoosepersonlist.querySelectorAll("input[type='checkbox']");
+        for (let i = 0; i < boxes.length; i++) {
+            if (boxes[i].checked) {
+                ids.push(Number(boxes[i].value));
+            }
+        }
+        if (ids.length === 0) return alert("请至少选择一名参与人员");
+
+        saveeditbutton.disabled = true;
+        try {
+            await senddata(
+                "/tasks/" + editid.value,
+                "PUT",
+                {
+                    title: title,
+                    taskDate: tdate,
+                    totalHours: Math.round(hours * 10) / 10,
+                    participantIds: ids
+                }
+            );
+            editdialog.close();
+            await loadTaskPage(currentTaskPage);
+            await loadPersonPage(currentPersonPage);
+        } catch (e) {
+        } finally {
+            saveeditbutton.disabled = false;
+        }
+    };
+
+    // 显示任务列表及修改、删除按钮
+    function showtasks(data) {
         clearlist(table);
-        for(let i = 0; i < tasks.length; i++)
-        {
+        let tasks = data.items || [];
+        for (let i = 0; i < tasks.length; i++) {
             let task = tasks[i];
             let tr = document.createElement("tr");
             let td1 = document.createElement("td");
@@ -328,26 +588,43 @@
 
             td1.textContent = task.id;
             td2.textContent = task.title;
-            td3.textContent = task.tdate;
+            td3.textContent = task.taskDate || task.tdate;
 
             let names = "";
-            for(let j = 0; j < task.participants.length; j++)
-            {
-                if(names != "")
-                {
+            let participants = task.participants || [];
+            for (let j = 0; j < participants.length; j++) {
+                if (names != "") {
                     names += "、";
                 }
-                names += task.participants[j].name;
+                names += participants[j].name;
             }
             td4.textContent = names || "-";
-            td5.textContent = Number(task.tothour).toFixed(1);
+            td5.textContent = Number(task.totalHours ?? task.tothour).toFixed(1);
+
+            let editBtn = document.createElement("button");
+            editBtn.textContent = "修改";
+            editBtn.onclick = async function() {
+                editBtn.disabled = true;
+                try {
+                    await openedit(task);
+                } finally {
+                    editBtn.disabled = false;
+                }
+            };
+            td6.appendChild(editBtn);
 
             let delBtn = document.createElement("button");
             delBtn.textContent = "删除";
             delBtn.onclick = async function() {
-                if(confirm("确定删除任务 #" + task.id + " 吗？")) {
-                    await senddata("/tasks/" + task.id, "DELETE");
-                    loadlists();
+                if (confirm("确定删除任务 #" + task.id + " 吗？")) {
+                    delBtn.disabled = true;
+                    try {
+                        await senddata("/tasks/" + task.id, "DELETE");
+                        await loadTaskPage(currentTaskPage);
+                        await loadPersonPage(currentPersonPage);
+                    } catch (e) {
+                        delBtn.disabled = false;
+                    }
                 }
             };
             td6.appendChild(delBtn);
@@ -360,89 +637,138 @@
             tr.appendChild(td6);
             table.appendChild(tr);
         }
+
+        currentTaskPage = data.page || 1;
+        let totalPages = data.totalPages || (data.total > 0 ? 1 : 0);
+        let total = data.total || 0;
+        taskpageinfo.textContent = "第 " + currentTaskPage + " / " + Math.max(1, totalPages) + " 页 (共 " + total + " 条)";
+        taskprevbtn.disabled = currentTaskPage <= 1;
+        tasknextbtn.disabled = currentTaskPage >= totalPages || totalPages === 0;
     }
 
-    // 加载数据
-    async function loadlists()
-    {
-        let persons = await getdata("/hours/leaderboard");
-        let tasks = await getdata("/tasks");
-        if(persons && persons.items) showpersons(persons.items);
-        if(tasks && tasks.items) showtasks(tasks.items);
+    // 加载指定页的任务列表
+    async function loadTaskPage(page) {
+        let data = await getdata("/tasks?page=" + page + "&pageSize=" + taskPageSize);
+        if (data) {
+            if (page > 1 && (!data.items || data.items.length === 0) && data.total > 0) {
+                return loadTaskPage(page - 1);
+            }
+            showtasks(data);
+        }
     }
 
-    // 添加人员
-    addpersonbutton.onclick = async function()
-    {
+    // 首次加载人员选择列表和两张数据表
+    async function loadlists() {
+        await loadAllPersonsForSelect();
+        await Promise.all([loadTaskPage(1), loadPersonPage(1)]);
+    }
+
+    // 创建人员并刷新人员列表
+    addpersonbutton.onclick = async function() {
         let name = addpersonname.value.trim();
-        if(!name) {
+        let stuid = addpersonstuid.value.trim();
+        if (!name) {
             alert("请输入组员姓名");
             return;
         }
-        await senddata(
-            "/members",
-            "POST",
-            {
-                name: name
-            }
-        );
-        addpersonname.value = "";
-        loadlists();
-    };
-
-    // 禁止输入超过一位小数
-    volunteertime.oninput = function() {
-        if (this.value.includes(".")) {
-            let parts = this.value.split(".");
-            if (parts[1].length > 1) {
-                this.value = parts[0] + "." + parts[1].slice(0, 1);
-            }
+        addpersonbutton.disabled = true;
+        try {
+            await senddata(
+                "/members",
+                "POST",
+                {
+                    name: name,
+                    studentNumber: stuid || undefined
+                }
+            );
+            addpersonname.value = "";
+            addpersonstuid.value = "";
+            await loadAllPersonsForSelect();
+            await loadPersonPage(1);
+        } catch (e) {
+        } finally {
+            addpersonbutton.disabled = false;
         }
     };
 
-    // 添加任务
-    taskbutton.onclick = async function()
-    {
+    // 限制时长输入最多保留一位小数
+    function limitOneDecimal(el) {
+        if (el.value.includes(".")) {
+            let parts = el.value.split(".");
+            if (parts[1].length > 1) {
+                el.value = parts[0] + "." + parts[1].slice(0, 1);
+            }
+        }
+    }
+
+    // 阻止时长框输入指定键盘字符
+    function blockInvalidChars(el) {
+        el.addEventListener("keydown", function(e) {
+            if (["e", "E", "+", "-"].includes(e.key)) {
+                e.preventDefault();
+            }
+        });
+    }
+
+    // 为创建和修改时长框绑定输入限制
+    blockInvalidChars(volunteertime);
+    blockInvalidChars(editvolunteertime);
+
+    volunteertime.oninput = function() {
+        limitOneDecimal(this);
+    };
+
+    editvolunteertime.oninput = function() {
+        limitOneDecimal(this);
+    };
+
+    // 校验并创建任务，刷新相关列表
+    taskbutton.onclick = async function() {
         let title = taskcontent.value.trim();
         let tdate = time.value;
         let rawHours = volunteertime.value.trim();
 
-        if(!title) return alert("请输入任务内容");
-        if(!tdate) return alert("请选择任务时间");
-        if(!rawHours || isNaN(Number(rawHours))) return alert("请输入有效的志愿时长");
-        if(!/^\d+(\.\d)?$/.test(rawHours)) return alert("志愿时长仅支持一位小数（如 0.1、1.5）");
+        if (!title) return alert("请输入任务内容");
+        if (!tdate) return alert("请选择任务时间");
+        if (!rawHours || isNaN(Number(rawHours))) return alert("请输入有效的志愿时长");
+        if (!/^\d+(\.\d)?$/.test(rawHours)) return alert("志愿时长仅支持一位小数（如 0.1、1.5）");
 
         let hours = Number(rawHours);
-        if(hours < 0.1) return alert("志愿时长最小为 0.1 小时");
+        if (hours < 0.1 || hours > 100.0) return alert("志愿时长须在 0.1 到 100 小时之间");
 
         let ids = [];
-        let boxes = choosepersonlist.querySelectorAll(
-            "input[type='checkbox']"
-        );
-        for(let i = 0; i < boxes.length; i++)
-        {
-            if(boxes[i].checked)
-            {
+        let boxes = choosepersonlist.querySelectorAll("input[type='checkbox']");
+        for (let i = 0; i < boxes.length; i++) {
+            if (boxes[i].checked) {
                 ids.push(Number(boxes[i].value));
             }
         }
-        if(ids.length === 0) return alert("请至少选择一名参与人员");
+        if (ids.length === 0) return alert("请至少选择一名参与人员");
 
-        await senddata(
-            "/tasks",
-            "POST",
-            {
-                title: title,
-                tdate: tdate,
-                tothour: Math.round(hours * 10) / 10,
-                totstu: ids
-            }
-        );
-        taskcontent.value = "";
-        volunteertime.value = "";
-        loadlists();
+        taskbutton.disabled = true;
+        try {
+            await senddata(
+                "/tasks",
+                "POST",
+                {
+                    title: title,
+                    taskDate: tdate,
+                    totalHours: Math.round(hours * 10) / 10,
+                    participantIds: ids
+                }
+            );
+            taskcontent.value = "";
+            volunteertime.value = "";
+            boxes.forEach(b => b.checked = false);
+            await loadTaskPage(1);
+            await loadPersonPage(currentPersonPage);
+        } catch (e) {
+        } finally {
+            taskbutton.disabled = false;
+        }
     };
 
+    // 打开页面时启动数据加载
     loadlists();
     </script>
 </body>
