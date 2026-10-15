@@ -25,7 +25,7 @@ def index():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -45,6 +45,8 @@ def get_db():
 
 def init_db():
     with get_db() as c:
+        c.execute("PRAGMA journal_mode=WAL;")
+        c.execute("PRAGMA foreign_keys=ON;")
         c.executescript('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,6 +65,9 @@ def init_db():
                 uid INTEGER NOT NULL,
                 hour REAL NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS idx_allocs_tid ON allocs(tid);
+            CREATE INDEX IF NOT EXISTS idx_allocs_uid ON allocs(uid);
+            CREATE INDEX IF NOT EXISTS idx_tasks_tdate ON tasks(tdate);
         ''')
 
 init_db()
@@ -81,11 +86,14 @@ def res(dat=None, msg="success", code=200):
 def save_allocs(conn, tid: Optional[int], totstu: List[int], tothour: float):
     if not tid or not totstu:
         return
+    placeholders = ",".join("?" for _ in totstu)
+    valid_ids = {r[0] for r in conn.execute(f"SELECT id FROM users WHERE id IN ({placeholders})", totstu).fetchall()}
     for uid in totstu:
-        conn.execute(
-            "INSERT INTO allocs (tid, uid, hour) VALUES (?, ?, ?)",
-            (tid, uid, round(tothour, 1))
-        )
+        if uid in valid_ids:
+            conn.execute(
+                "INSERT INTO allocs (tid, uid, hour) VALUES (?, ?, ?)",
+                (tid, uid, round(tothour, 1))
+            )
 
 class Addu(BaseModel):
     name: str
@@ -103,17 +111,25 @@ class Addt(BaseModel):
 
 @app.post("/api/v1/members")
 def addu(u: Addu):
+    name = u.name.strip()
+    if not name or len(name) > 50:
+        return res(None, "invalid name", 400)
     raw_id = (u.studentNumber or u.stuid or "").strip()
+    if len(raw_id) > 50:
+        return res(None, "invalid stuid", 400)
     stuid = raw_id if raw_id else f"STU{int(datetime.now().timestamp() * 1000)}"
     try:
         with get_db() as c:
-            cur = c.execute("INSERT INTO users (name, stuid) VALUES (?, ?)", (u.name.strip(), stuid))
+            cur = c.execute("INSERT INTO users (name, stuid) VALUES (?, ?)", (name, stuid))
             return res({"id": cur.lastrowid})
     except sqlite3.IntegrityError:
         return res(None, "stuid exists", 409)
 
 @app.post("/api/v1/tasks")
 def addt(t: Addt):
+    title = t.title.strip()
+    if not title or len(title) > 100:
+        return res(None, "invalid title", 400)
     task_date = t.taskDate or t.tdate
     if not task_date:
         return res(None, "date required", 400)
@@ -124,7 +140,7 @@ def addt(t: Addt):
     tothour = round(task_hours, 1)
     with get_db() as c:
         cur = c.execute("INSERT INTO tasks (title, tdate, tothour) VALUES (?, ?, ?)", 
-                        (t.title, task_date.isoformat(), tothour))
+                        (title, task_date.isoformat(), tothour))
         tid = cur.lastrowid
         save_allocs(c, tid, uids, tothour)
         return res({"taskId": tid})
@@ -132,25 +148,45 @@ def addt(t: Addt):
 @app.get("/api/v1/tasks")
 def queryt():
     with get_db() as c:
+        task_rows = c.execute("SELECT id, title, tdate, tothour FROM tasks ORDER BY id DESC").fetchall()
+        if not task_rows:
+            return res({"items": []})
+        
+        alloc_rows = c.execute("""
+            SELECT a.tid, u.id, u.name, ROUND(a.hour, 1) as hour
+            FROM allocs a
+            JOIN users u ON a.uid = u.id
+        """).fetchall()
+        
+        task_allocs = {}
+        for ar in alloc_rows:
+            tid = ar["tid"]
+            if tid not in task_allocs:
+                task_allocs[tid] = []
+            task_allocs[tid].append({
+                "id": ar["id"],
+                "name": ar["name"],
+                "hour": ar["hour"],
+                "allocatedHours": ar["hour"]
+            })
+            
         tasks = []
-        for r in c.execute("SELECT id, title, tdate, tothour FROM tasks ORDER BY id DESC").fetchall():
+        for r in task_rows:
             item = dict(r)
             item["tothour"] = round(item["tothour"], 1)
             item["totalHours"] = item["tothour"]
             item["taskDate"] = item["tdate"]
-            participants = [dict(u) for u in c.execute("""
-                SELECT u.id, u.name, ROUND(a.hour, 1) as hour, ROUND(a.hour, 1) as allocatedHours
-                FROM allocs a
-                JOIN users u ON a.uid = u.id
-                WHERE a.tid = ?
-            """, (item["id"],)).fetchall()]
-            item["participants"] = participants
-            item["participantIds"] = [p["id"] for p in participants]
+            parts = task_allocs.get(item["id"], [])
+            item["participants"] = parts
+            item["participantIds"] = [p["id"] for p in parts]
             tasks.append(item)
         return res({"items": tasks})
 
 @app.put("/api/v1/tasks/{tid}")
 def modifyt(tid: int, t: Addt):
+    title = t.title.strip()
+    if not title or len(title) > 100:
+        return res(None, "invalid title", 400)
     task_date = t.taskDate or t.tdate
     if not task_date:
         return res(None, "date required", 400)
@@ -164,7 +200,7 @@ def modifyt(tid: int, t: Addt):
         if not exist:
             return res(None, "task not found", 404)
         c.execute("UPDATE tasks SET title=?, tdate=?, tothour=? WHERE id=?", 
-                  (t.title, task_date.isoformat(), tothour, tid))
+                  (title, task_date.isoformat(), tothour, tid))
         c.execute("DELETE FROM allocs WHERE tid=?", (tid,))
         save_allocs(c, tid, uids, tothour)
         return res({"taskId": tid})
